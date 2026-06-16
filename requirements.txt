@@ -1,0 +1,13 @@
+# SIEM-Lite Log Correlation Engine
+# Only two third-party packages are required.
+# Everything else uses the Python standard library.
+
+Flask>=3.0.0
+PyYAML>=6.0
+
+# ---- Optional (not required for basic operation) ----
+# geoip2>=4.8.0       # Real GeoIP lookups (needs MaxMind database)
+# boto3>=1.34         # AWS CloudTrail/CloudWatch collectors
+# google-cloud-logging  # GCP log collector
+# pywin32>=306        # Native Windows Event collection (Windows only)
+# pytest>=7.4         # Running the test suite

@@ -1,0 +1,363 @@
+# Correlation Rules
+# =================
+# Multi-event rules that detect patterns across multiple events within time windows.
+
+rules:
+  # --- Brute Force Detection ---
+
+  - rule_id: "CORR-001"
+    name: "SSH Brute Force Attack"
+    description: "Multiple failed SSH logins from same source (10+ in 5 minutes)"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: brute_force
+    tags: [brute_force, ssh, authentication]
+    mitre_attack: ["T1110.001"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: logon_failed
+        - field: product
+          operator: in
+          value: [sshd, ssh]
+    logic: or
+    actions: [alert]
+    window: 300       # 5 minutes
+    threshold: 10     # 10 or more failures
+    group_by: [source_ip]
+    confidence: 0.9
+    false_positive_rate: 0.1
+
+  - rule_id: "CORR-002"
+    name: "Authentication Brute Force (Windows)"
+    description: "Multiple failed Windows logons from same source (5+ in 10 minutes)"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: brute_force
+    tags: [brute_force, windows, authentication]
+    mitre_attack: ["T1110.001"]
+    conditions:
+      - - field: rule_id
+          operator: eq
+          value: "4625"
+      - - field: event_type
+          operator: eq
+          value: authentication
+        - field: result
+          operator: eq
+          value: failure
+    logic: or
+    actions: [alert]
+    window: 600
+    threshold: 5
+    group_by: [source_ip, source_user]
+    confidence: 0.85
+
+  - rule_id: "CORR-003"
+    name: "Distributed Brute Force"
+    description: "Multiple sources failing auth to same account (5+ sources in 15 minutes)"
+    rule_type: correlation
+    severity: critical
+    status: active
+    category: brute_force
+    tags: [brute_force, distributed, password_spray]
+    mitre_attack: ["T1110.003"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: logon_failed
+    logic: or
+    actions: [alert]
+    window: 900
+    threshold: 5
+    group_by: [source_user]
+    confidence: 0.85
+
+  # --- Port Scanning ---
+
+  - rule_id: "CORR-004"
+    name: "Port Scan Detected"
+    description: "Multiple connections to different ports from same source (20+ in 2 minutes)"
+    rule_type: correlation
+    severity: medium
+    status: active
+    category: reconnaissance
+    tags: [reconnaissance, port_scan, network]
+    mitre_attack: ["T1046"]
+    conditions:
+      - - field: event_type
+          operator: in
+          value: [network, firewall]
+        - field: action
+          operator: in
+          value: [connect, deny, accept]
+    logic: or
+    actions: [alert]
+    window: 120
+    threshold: 20
+    group_by: [source_ip]
+    confidence: 0.8
+    false_positive_rate: 0.2
+
+  - rule_id: "CORR-005"
+    name: "Network Sweep Detected"
+    description: "Connections to multiple hosts from same source (10+ hosts in 5 minutes)"
+    rule_type: correlation
+    severity: medium
+    status: active
+    category: reconnaissance
+    tags: [reconnaissance, network_sweep]
+    mitre_attack: ["T1046"]
+    conditions:
+      - - field: event_type
+          operator: in
+          value: [network, firewall]
+    logic: or
+    actions: [alert]
+    window: 300
+    threshold: 10
+    group_by: [source_ip]
+    confidence: 0.75
+
+  # --- Data Exfiltration ---
+
+  - rule_id: "CORR-006"
+    name: "Potential Data Exfiltration"
+    description: "Large outbound data transfer (100MB+ in 10 minutes)"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: exfiltration
+    tags: [exfiltration, data_loss]
+    mitre_attack: ["T1041", "T1048"]
+    conditions:
+      - - field: direction
+          operator: eq
+          value: outbound
+        - field: bytes_sent
+          operator: gt
+          value: 10485760  # 10MB per event
+    logic: or
+    actions: [alert]
+    window: 600
+    threshold: 5
+    group_by: [source_ip, dest_ip]
+    confidence: 0.7
+
+  - rule_id: "CORR-007"
+    name: "DNS Tunneling Suspected"
+    description: "High volume of DNS queries to same domain (100+ in 5 minutes)"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: exfiltration
+    tags: [dns_tunneling, exfiltration, c2]
+    mitre_attack: ["T1071.004", "T1572"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: dns
+    logic: or
+    actions: [alert]
+    window: 300
+    threshold: 100
+    group_by: [source_ip, dns_query]
+    confidence: 0.75
+
+  # --- Lateral Movement ---
+
+  - rule_id: "CORR-008"
+    name: "Lateral Movement - Multiple Targets"
+    description: "Single source connecting to many internal hosts (10+ in 10 minutes)"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: lateral_movement
+    tags: [lateral_movement, network]
+    mitre_attack: ["T1021"]
+    conditions:
+      - - field: source_is_internal
+          operator: eq
+          value: true
+        - field: dest_is_internal
+          operator: eq
+          value: true
+        - field: event_type
+          operator: in
+          value: [authentication, network]
+    logic: or
+    actions: [alert]
+    window: 600
+    threshold: 10
+    group_by: [source_ip]
+    confidence: 0.7
+
+  - rule_id: "CORR-009"
+    name: "Pass-the-Hash Indicator"
+    description: "Multiple authentications using different methods from same source"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: lateral_movement
+    tags: [lateral_movement, pass_the_hash]
+    mitre_attack: ["T1550.002"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: authentication
+        - field: result
+          operator: eq
+          value: success
+    logic: or
+    actions: [alert]
+    window: 300
+    threshold: 5
+    group_by: [source_ip]
+    confidence: 0.65
+
+  # --- Malware / C2 ---
+
+  - rule_id: "CORR-010"
+    name: "C2 Beaconing Pattern"
+    description: "Regular periodic connections to same external host (beacon pattern)"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: c2
+    tags: [c2, beaconing, malware]
+    mitre_attack: ["T1071", "T1573"]
+    conditions:
+      - - field: dest_is_internal
+          operator: eq
+          value: false
+        - field: source_is_internal
+          operator: eq
+          value: true
+        - field: event_type
+          operator: in
+          value: [network, dns]
+    logic: or
+    actions: [alert]
+    window: 3600
+    threshold: 30
+    group_by: [source_ip, dest_ip]
+    confidence: 0.7
+
+  - rule_id: "CORR-011"
+    name: "Ransomware Activity Pattern"
+    description: "Mass file modifications indicating ransomware encryption"
+    rule_type: correlation
+    severity: critical
+    status: active
+    category: ransomware
+    tags: [ransomware, file_encryption]
+    mitre_attack: ["T1486"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: file
+        - field: action
+          operator: in
+          value: [modify, write, create]
+    logic: or
+    actions: [alert]
+    window: 300
+    threshold: 100
+    group_by: [source_host]
+    confidence: 0.9
+
+  # --- Privilege Escalation Sequence ---
+
+  - rule_id: "CORR-012"
+    name: "Privilege Escalation Sequence"
+    description: "Authentication followed by privileged action"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: privilege_escalation
+    tags: [privilege_escalation, lateral_movement]
+    mitre_attack: ["T1068", "T1548"]
+    conditions:
+      - - field: action
+          operator: in
+          value: [execute, user_created, member_added, policy_changed]
+        - field: source_user
+          operator: regex
+          value: "admin|root|system"
+    logic: or
+    actions: [alert]
+    window: 600
+    threshold: 3
+    group_by: [source_ip]
+    confidence: 0.75
+
+  # --- Account Manipulation ---
+
+  - rule_id: "CORR-013"
+    name: "Mass Account Changes"
+    description: "Multiple account modifications in short timeframe"
+    rule_type: correlation
+    severity: high
+    status: active
+    category: account_manipulation
+    tags: [account_manipulation, persistence]
+    mitre_attack: ["T1098", "T1136"]
+    conditions:
+      - - field: action
+          operator: in
+          value: [user_created, user_deleted, user_disabled, password_reset, member_added]
+    logic: or
+    actions: [alert]
+    window: 600
+    threshold: 5
+    group_by: [source_ip]
+    confidence: 0.8
+
+  # --- Firewall Denial Storm ---
+
+  - rule_id: "CORR-014"
+    name: "Firewall Denial Storm"
+    description: "High volume of firewall denials from same source"
+    rule_type: correlation
+    severity: medium
+    status: active
+    category: network_attack
+    tags: [firewall, network_attack, dos]
+    mitre_attack: ["T1498", "T1499"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: firewall
+        - field: action
+          operator: eq
+          value: deny
+    logic: or
+    actions: [alert]
+    window: 60
+    threshold: 50
+    group_by: [source_ip]
+    confidence: 0.7
+
+  # --- Multiple Malware Detections ---
+
+  - rule_id: "CORR-015"
+    name: "Widespread Malware Infection"
+    description: "Malware detected on multiple systems"
+    rule_type: correlation
+    severity: critical
+    status: active
+    category: malware
+    tags: [malware, outbreak]
+    mitre_attack: ["T1204"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: av_malware
+    logic: or
+    actions: [alert]
+    window: 1800
+    threshold: 3
+    group_by: [file_hash]
+    confidence: 0.9

@@ -1,0 +1,159 @@
+# SIEM-Lite Production Configuration
+# ================================
+# Copy this to config/siem.yaml and customize.
+#
+# IMPORTANT: Change the secret_key before deploying!
+
+# General settings
+general:
+  name: "SIEM-Lite"
+  version: "2.4.1"
+  environment: "production"
+  timezone: "UTC"
+
+# Storage configuration
+storage:
+  type: "sqlite"
+  path: "data/siem.db"
+  max_events: 1000000
+  retention_days: 30
+
+# Pipeline configuration
+pipeline:
+  queue_size: 100000
+  batch_size: 100
+  flush_interval: 1.0
+  max_workers: 4
+
+# Normalizer configuration
+normalizer:
+  default_vendor: "unknown"
+  default_product: "unknown"
+
+# Enrichment configuration
+enrichment:
+  enable_geoip: true
+  enable_asset_lookup: true
+  enable_port_mapping: true
+
+# Threat intelligence
+threat_intel:
+  auto_update: true
+  update_interval: 3600
+
+# Risk scoring weights
+risk_scoring:
+  weights:
+    severity: 25
+    threat_intel: 20
+    asset_criticality: 15
+    network_direction: 10
+    action_risk: 10
+    time_of_day: 5
+    user_privilege: 10
+    historical: 5
+
+# Aggregation
+aggregation:
+  intervals: [60, 300, 3600]
+  group_fields:
+    - source_ip
+    - event_type
+    - severity
+    - action
+  max_bucket_age: 86400
+
+# Anomaly detection
+anomaly:
+  method: zscore
+  threshold: 3.0
+  warmup_period: 50
+
+# Alerting
+alerting:
+  dedup_window: 300
+  routing:
+    critical: [console, webhook, email, syslog]
+    high: [console, webhook, email]
+    medium: [console, webhook]
+    low: [console]
+    info: [console]
+  # Configure your notification endpoints:
+  # webhook_url: "https://hooks.slack.com/services/your/webhook"
+  # webhook_token: "your-secret-token"
+  # email_recipients: ["soc@yourorg.com"]
+  # syslog_host: "localhost"
+
+# Correlation
+correlation:
+  cleanup_interval: 60
+  max_windows_memory: 500000
+
+# Rules engine
+rules:
+  max_rule_eval_time: 0.001
+
+# Query engine
+query:
+  max_results: 10000
+
+# ─────────────────────────────────────────────────────
+# SECURITY — CHANGE THESE FOR PRODUCTION
+# ─────────────────────────────────────────────────────
+security:
+  # Generate a random key: python3 -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "CHANGE-ME-TO-A-RANDOM-64-CHARACTER-STRING"
+  password_min_length: 8
+  max_login_attempts: 5
+  lockout_duration: 1800
+  session_timeout: 3600
+  require_https: false  # Set to true behind a TLS reverse proxy
+  audit_all_actions: true
+
+# API server
+api:
+  host: "127.0.0.1"  # Bind to localhost; use reverse proxy for external access
+  port: 8443
+  debug: false
+  cors_origins: []
+  rate_limit: 100
+
+# Web UI
+web:
+  enabled: true
+  title: "SIEM-Lite Console"
+  refresh_interval: 30
+  theme: "dark"
+  items_per_page: 50
+
+# Logging
+logging:
+  level: INFO
+  file: "siem.log"
+  max_size: 10485760
+  backup_count: 5
+
+# Collectors — enable and configure for your environment
+collectors:
+  # Syslog over UDP (most common for network devices/firewalls)
+  syslog_udp:
+    type: syslog
+    protocol: udp
+    host: "0.0.0.0"
+    port: 514
+    enabled: false  # Set to true to enable
+
+  # Syslog over TCP (reliable delivery)
+  syslog_tcp:
+    type: syslog
+    protocol: tcp
+    host: "0.0.0.0"
+    port: 601
+    enabled: false
+
+  # File-based log collection
+  file_logs:
+    type: file
+    directory: "/var/log"
+    pattern: "*.log"
+    enabled: false

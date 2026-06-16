@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  siem-lite:
+    build: .
+    container_name: siem-lite
+    ports:
+      - "8443:8443"
+    volumes:
+      # Persist database and config across restarts
+      - siem-data:/app/data
+      - ./config:/app/config
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8443/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  siem-data:

@@ -1,0 +1,531 @@
+# Detection Rules
+# ===============
+# Single-event detection rules that trigger on matching conditions.
+
+rules:
+  # --- Authentication Rules ---
+
+  - rule_id: "AUTH-001"
+    name: "Failed SSH Authentication"
+    description: "Detects failed SSH login attempts"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: authentication
+    tags: [authentication, ssh, brute_force]
+    mitre_attack: ["T1110"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: authentication
+        - field: action
+          operator: eq
+          value: logon_failed
+      - - field: message
+          operator: regex
+          value: "failed password|authentication failure|invalid user"
+        - field: product
+          operator: in
+          value: [sshd, ssh, login]
+    logic: or
+    actions: [alert]
+    confidence: 0.85
+    false_positive_rate: 0.15
+    metadata:
+      suppress_duration: 60
+
+  - rule_id: "AUTH-002"
+    name: "Root Login Detected"
+    description: "Detects direct root login"
+    rule_type: detection
+    severity: high
+    status: active
+    category: authentication
+    tags: [authentication, privileged_access, root]
+    mitre_attack: ["T1078"]
+    conditions:
+      - - field: source_user
+          operator: eq
+          value: root
+        - field: action
+          operator: in
+          value: [logon, logon_explicit]
+        - field: result
+          operator: eq
+          value: success
+    logic: or
+    actions: [alert]
+    confidence: 0.9
+
+  - rule_id: "AUTH-003"
+    name: "Authentication from New Geographic Location"
+    description: "User authenticating from unexpected country"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: authentication
+    tags: [authentication, geo_anomaly]
+    mitre_attack: ["T1078"]
+    conditions:
+      - - field: source_country
+          operator: exists
+          value: true
+        - field: source_is_internal
+          operator: eq
+          value: false
+        - field: source_country
+          operator: in
+          value: ["Russia", "China", "North Korea", "Iran"]
+    logic: or
+    actions: [alert]
+    confidence: 0.7
+
+  - rule_id: "AUTH-004"
+    name: "Off-Hours Authentication"
+    description: "Authentication during unusual hours"
+    rule_type: detection
+    severity: low
+    status: active
+    category: authentication
+    conditions:
+      - - field: action
+          operator: in
+          value: [logon, logon_explicit]
+        - field: result
+          operator: eq
+          value: success
+        - field: source_user
+          operator: regex
+          value: "admin|root|administrator"
+    logic: or
+    actions: [alert]
+    confidence: 0.6
+
+  - rule_id: "AUTH-005"
+    name: "Account Lockout"
+    description: "Account was locked out due to failed attempts"
+    rule_type: detection
+    severity: high
+    status: active
+    category: authentication
+    conditions:
+      - - field: action
+          operator: eq
+          value: user_disabled
+        - field: message
+          operator: contains
+          value: "lock"
+      - - field: event_type
+          operator: eq
+          value: authentication
+        - field: message
+          operator: regex
+          value: "account.*lock|lockout"
+    logic: or
+    actions: [alert]
+
+  # --- Privilege Escalation ---
+
+  - rule_id: "PRIV-001"
+    name: "Sudo Command Execution"
+    description: "Privileged command execution via sudo"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: privilege_escalation
+    tags: [privilege_escalation, sudo]
+    mitre_attack: ["T1548.003"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: execute
+        - field: product
+          operator: eq
+          value: sudo
+      - - field: message
+          operator: contains
+          value: "sudo"
+        - field: command_line
+          operator: exists
+          value: true
+    logic: or
+    actions: [alert]
+    confidence: 0.8
+
+  - rule_id: "PRIV-002"
+    name: "New User Account Created"
+    description: "New user account creation - potential persistence"
+    rule_type: detection
+    severity: high
+    status: active
+    category: persistence
+    tags: [persistence, account_creation]
+    mitre_attack: ["T1136"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: user_created
+      - - field: event_type
+          operator: eq
+          value: authorization
+        - field: message
+          operator: contains
+          value: "account"
+        - field: message
+          operator: contains
+          value: "creat"
+    logic: or
+    actions: [alert]
+    confidence: 0.85
+
+  - rule_id: "PRIV-003"
+    name: "User Added to Privileged Group"
+    description: "User added to admin/root group"
+    rule_type: detection
+    severity: high
+    status: active
+    category: privilege_escalation
+    tags: [privilege_escalation]
+    mitre_attack: ["T1098"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: member_added
+      - - field: message
+          operator: regex
+          value: "(admin|root|wheel|sudo|domain admins)"
+    logic: or
+    actions: [alert]
+
+  # --- Malware / File ---
+
+  - rule_id: "MAL-001"
+    name: "Malware Detected"
+    description: "Antivirus/malware detection event"
+    rule_type: detection
+    severity: critical
+    status: active
+    category: malware
+    tags: [malware, antivirus]
+    mitre_attack: ["T1204", "T1055"]
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: av_malware
+      - - field: message
+          operator: regex
+          value: "(virus|malware|trojan|worm|ransomware|backdoor)"
+        - field: action
+          operator: in
+          value: [alert, detect]
+    logic: or
+    actions: [alert]
+    confidence: 0.95
+
+  - rule_id: "MAL-002"
+    name: "Suspicious File Hash"
+    description: "File with known-malicious hash detected"
+    rule_type: threat_intel
+    severity: critical
+    status: active
+    category: malware
+    conditions:
+      - - field: ioc_matched
+          operator: exists
+          value: true
+        - field: file_hash
+          operator: exists
+          value: true
+    logic: or
+    actions: [alert]
+    confidence: 0.95
+
+  - rule_id: "MAL-003"
+    name: "Executable in Temp Directory"
+    description: "Executable file created in temp directory"
+    rule_type: detection
+    severity: high
+    status: active
+    category: malware
+    tags: [malware, suspicious_file]
+    mitre_attack: ["T1105", "T1059"]
+    conditions:
+      - - field: file_path
+          operator: regex
+          value: "/tmp/|/var/tmp/|C:\\\\Temp|C:\\\\Users.*\\\\AppData.*\\\\Temp"
+        - field: file_name
+          operator: regex
+          value: "\\.(exe|dll|sh|bat|ps1|vbs|js)$"
+    logic: or
+    actions: [alert]
+    confidence: 0.75
+
+  # --- Network ---
+
+  - rule_id: "NET-001"
+    name: "Connection to Known Malicious IP"
+    description: "Network connection to IP in threat intelligence"
+    rule_type: threat_intel
+    severity: high
+    status: active
+    category: network
+    tags: [network, c2, threat_intel]
+    mitre_attack: ["T1071"]
+    conditions:
+      - - field: ioc_matched
+          operator: exists
+          value: true
+        - field: dest_ip
+          operator: exists
+          value: true
+    logic: or
+    actions: [alert]
+    confidence: 0.9
+
+  - rule_id: "NET-002"
+    name: "External RDP Connection"
+    description: "RDP connection from external IP"
+    rule_type: detection
+    severity: high
+    status: active
+    category: network
+    tags: [network, rdp, lateral_movement]
+    mitre_attack: ["T1021.001"]
+    conditions:
+      - - field: dest_port
+          operator: eq
+          value: 3389
+        - field: source_is_internal
+          operator: eq
+          value: false
+    logic: or
+    actions: [alert]
+    confidence: 0.85
+
+  - rule_id: "NET-003"
+    name: "DNS Query to Suspicious Domain"
+    description: "DNS query matching threat intelligence"
+    rule_type: threat_intel
+    severity: high
+    status: active
+    category: dns
+    conditions:
+      - - field: event_type
+          operator: eq
+          value: dns
+        - field: ioc_matched
+          operator: exists
+          value: true
+    logic: or
+    actions: [alert]
+
+  - rule_id: "NET-004"
+    name: "Outbound Connection to Non-Standard Port"
+    description: "Outbound connection on unusual port"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: network
+    conditions:
+      - - field: direction
+          operator: eq
+          value: outbound
+        - field: dest_port
+          operator: not_in
+          value: [80, 443, 53, 25, 587, 993, 995, 123, 22]
+        - field: source_is_internal
+          operator: eq
+          value: true
+    logic: or
+    actions: [alert]
+
+  # --- Web ---
+
+  - rule_id: "WEB-001"
+    name: "SQL Injection Attempt"
+    description: "Potential SQL injection in web request"
+    rule_type: detection
+    severity: high
+    status: active
+    category: web_attack
+    tags: [web, sqli, injection]
+    mitre_attack: ["T1190"]
+    conditions:
+      - - field: uri_path
+          operator: regex
+          value: "(union|select|insert|drop|update|delete).*from|;|--|/\\*"
+      - - field: query_string
+          operator: regex
+          value: "(union|select|insert|drop).*from|;|--|/\\*|xp_cmdshell"
+    logic: or
+    actions: [alert]
+    confidence: 0.8
+
+  - rule_id: "WEB-002"
+    name: "XSS Attempt Detected"
+    description: "Potential cross-site scripting attempt"
+    rule_type: detection
+    severity: high
+    status: active
+    category: web_attack
+    tags: [web, xss]
+    mitre_attack: ["T1185"]
+    conditions:
+      - - field: uri_path
+          operator: regex
+          value: "<script|javascript:|onerror=|onload=|<iframe|<embed|<object"
+      - - field: query_string
+          operator: regex
+          value: "<script|javascript:|onerror=|onload=|alert\\(|document\\.cookie"
+    logic: or
+    actions: [alert]
+    confidence: 0.8
+
+  - rule_id: "WEB-003"
+    name: "Directory Traversal Attempt"
+    description: "Path/directory traversal in web request"
+    rule_type: detection
+    severity: high
+    status: active
+    category: web_attack
+    conditions:
+      - - field: uri_path
+          operator: regex
+          value: "\\.\\./|\\.\\.%2f|%2e%2e|/etc/passwd|/etc/shadow|\\.\\.%5c"
+    logic: or
+    actions: [alert]
+
+  - rule_id: "WEB-004"
+    name: "Web Scanner Detected"
+    description: "Automated web scanner user agent"
+    rule_type: detection
+    severity: low
+    status: active
+    category: reconnaissance
+    conditions:
+      - - field: user_agent
+          operator: regex
+          value: "(sqlmap|nikto|nmap|masscan|nessus|acunetix|burp|zap|w3af|dirbuster|gobuster)"
+    logic: or
+    actions: [alert]
+
+  # --- System / Audit ---
+
+  - rule_id: "SYS-001"
+    name: "Security Log Cleared"
+    description: "Security event log was cleared - potential cover-up"
+    rule_type: detection
+    severity: critical
+    status: active
+    category: defense_evasion
+    tags: [defense_evasion, log_tampering]
+    mitre_attack: ["T1070.001"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: log_cleared
+      - - field: rule_id
+          operator: eq
+          value: "1102"
+      - - field: message
+          operator: contains
+          value: "audit log"
+        - field: message
+          operator: contains
+          value: clear
+    logic: or
+    actions: [alert]
+    confidence: 0.95
+
+  - rule_id: "SYS-002"
+    name: "New Service Installed"
+    description: "New system service installed - potential persistence"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: persistence
+    tags: [persistence, service]
+    mitre_attack: ["T1543.003"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: service_installed
+      - - field: rule_id
+          operator: eq
+          value: "7045"
+    logic: or
+    actions: [alert]
+
+  - rule_id: "SYS-003"
+    name: "Scheduled Task Created"
+    description: "New scheduled task - potential persistence"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: persistence
+    tags: [persistence, scheduled_task]
+    mitre_attack: ["T1053.005"]
+    conditions:
+      - - field: action
+          operator: eq
+          value: task_created
+      - - field: rule_id
+          operator: eq
+          value: "4698"
+    logic: or
+    actions: [alert]
+
+  # --- PowerShell ---
+
+  - rule_id: "PSH-001"
+    name: "PowerShell Encoded Command"
+    description: "PowerShell executing encoded/obfuscated command"
+    rule_type: detection
+    severity: high
+    status: active
+    category: execution
+    tags: [powershell, obfuscation]
+    mitre_attack: ["T1059.001", "T1027"]
+    conditions:
+      - - field: command_line
+          operator: regex
+          value: "-enc|-encodedcommand|JAB|AGQAcgB"
+      - - field: command_line
+          operator: regex
+          value: "-e |-ec |-EncodedCommand"
+        - field: process_name
+          operator: regex
+          value: "powershell|pwsh"
+    logic: or
+    actions: [alert]
+    confidence: 0.85
+
+  - rule_id: "PSH-002"
+    name: "PowerShell Download Cradle"
+    description: "PowerShell downloading and executing remote content"
+    rule_type: detection
+    severity: high
+    status: active
+    category: execution
+    tags: [powershell, download]
+    mitre_attack: ["T1059.001", "T1105"]
+    conditions:
+      - - field: command_line
+          operator: regex
+          value: "(Invoke-WebRequest|iex|Invoke-Expression|Net\\.WebClient|DownloadString|DownloadFile|Start-BitsTransfer)"
+    logic: or
+    actions: [alert]
+
+  - rule_id: "PSH-003"
+    name: "PowerShell Execution Policy Bypass"
+    description: "PowerShell with execution policy bypass flag"
+    rule_type: detection
+    severity: medium
+    status: active
+    category: execution
+    conditions:
+      - - field: command_line
+          operator: regex
+          value: "ExecutionPolicy Bypass|-ep bypass|-exec bypass"
+    logic: or
+    actions: [alert]

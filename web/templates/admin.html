@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Admin — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-row">
+        <div>
+            <h1>Administration</h1>
+            <div class="page-sub">System health, collectors, users, and audit trail</div>
+        </div>
+        <button class="btn btn-outline" onclick="loadAll()">↻ Refresh</button>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- System stats -->
+    <div class="panel span-2">
+        <div class="panel-head">
+            <h2>Engine Statistics</h2>
+            <span class="panel-meta">component health</span>
+        </div>
+        <div class="panel-body flush">
+            <div class="stats-cols" id="admin-stats">
+                <div class="empty"><div class="empty-mark">—</div>Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Collectors -->
+    <div class="panel">
+        <div class="panel-head">
+            <h2>Collectors</h2>
+            <span class="panel-meta" id="collector-count"></span>
+        </div>
+        <div class="panel-body flush">
+            <div id="collectors-list">
+                <div class="empty"><div class="empty-mark">—</div>Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users -->
+    <div class="panel">
+        <div class="panel-head">
+            <h2>Users</h2>
+        </div>
+        <div class="panel-body flush">
+            <div id="users-list">
+                <div class="empty"><div class="empty-mark">—</div>Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audit log -->
+    <div class="panel span-2">
+        <div class="panel-head">
+            <h2>Audit Log</h2>
+            <span class="panel-meta">recent actions</span>
+        </div>
+        <div class="panel-body flush">
+            <div id="audit-log" style="padding:0.875rem 1.25rem;">
+                <div class="empty"><div class="empty-mark">—</div>Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadStats() {
+    try {
+        var resp = await fetch('/api/stats');
+        var stats = await resp.json();
+        var sections = [
+            ['Pipeline', stats.pipeline],
+            ['Storage', stats.storage],
+            ['Rules', stats.rules],
+            ['Correlation', stats.correlation],
+            ['Threat Intel', stats.threat_intel],
+            ['Alerting', stats.alerting],
+        ];
+        var html = '';
+        sections.forEach(function(s){
+            if(!s[1]) return;
+            html += '<div class="stats-col"><div class="stats-col-title">' + s[0] + '</div>';
+            Object.keys(s[1]).forEach(function(k){
+                var v = s[1][k];
+                if(typeof v === 'object') return;
+                html += '<div class="stats-line"><span class="sk">' + k.replace(/_/g,' ') + '</span><span class="sv">' + v + '</span></div>';
+            });
+            html += '</div>';
+        });
+        document.getElementById('admin-stats').innerHTML = html;
+    } catch(e){ console.error(e); }
+}
+
+async function loadCollectors() {
+    try {
+        var resp = await fetch('/api/collectors/stats');
+        var data = await resp.json();
+        var entries = Object.entries(data);
+        document.getElementById('collector-count').textContent = entries.length + ' configured';
+        var c = document.getElementById('collectors-list');
+        if(!entries.length){ c.innerHTML = '<div class="empty"><div class="empty-mark">—</div>No collectors configured</div>'; return; }
+        c.innerHTML = entries.map(function(e){
+            var name = e[0], s = e[1];
+            var statusTag = s.status === 'running' ? '<span class="tag tag-solid">RUNNING</span>' : '<span class="tag tag-muted">' + (s.status||'STOPPED').toUpperCase() + '</span>';
+            return '<div class="stat-list-item" style="padding:0.625rem 1.25rem;">'
+                + '<span class="sl-label">' + name + '</span>'
+                + '<span class="flex gap-2 items-center">'
+                + statusTag
+                + '<span class="td-mono">' + (s.events_collected||0) + ' ev</span>'
+                + '</span></div>';
+        }).join('');
+    } catch(e){ console.error(e); }
+}
+
+async function loadUsers() {
+    try {
+        var resp = await fetch('/api/users');
+        var data = await resp.json();
+        var c = document.getElementById('users-list');
+        c.innerHTML = (data.users||[]).map(function(u){
+            var lastLogin = u.last_login ? u.last_login.substring(0,16).replace('T',' ') : 'never';
+            return '<div class="stat-list-item" style="padding:0.625rem 1.25rem;">'
+                + '<div><span class="sl-label" style="display:block;font-weight:600;text-transform:none;color:var(--black);">' + u.username + '</span>'
+                + '<span style="font-size:0.625rem;color:var(--gray-500);text-transform:uppercase;letter-spacing:var(--tracking-wide);">' + (u.roles||[]).join(', ') + '</span></div>'
+                + '<span class="td-mono">' + lastLogin + '</span>'
+                + '</div>';
+        }).join('');
+    } catch(e){ console.error(e); }
+}
+
+async function loadAuditLog() {
+    try {
+        var resp = await fetch('/api/audit?limit=25');
+        var data = await resp.json();
+        var c = document.getElementById('audit-log');
+        var entries = data.entries||[];
+        if(!entries.length){ c.innerHTML = '<div class="empty"><div class="empty-mark">—</div>No audit entries</div>'; return; }
+        c.innerHTML = entries.map(function(e){
+            return '<div class="timeline-item">'
+                + '<span class="tl-time">' + (e.timestamp||'').substring(0,19).replace('T',' ') + '</span>'
+                + '<span class="tl-actor">' + SIEM.escapeHtml(e.actor) + '</span>'
+                + '<span class="tl-action">' + SIEM.escapeHtml(e.action) + '</span>'
+                + '<span class="tl-desc">' + SIEM.escapeHtml(e.description) + '</span>'
+                + '</div>';
+        }).join('');
+    } catch(e){ console.error(e); }
+}
+
+function loadAll(){ loadStats(); loadCollectors(); loadUsers(); loadAuditLog(); }
+loadAll();
+setInterval(function(){ loadStats(); loadAuditLog(); }, 60000);
+</script>
+{% endblock %}

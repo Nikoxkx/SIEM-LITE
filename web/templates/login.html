@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — SIEM-LITE</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="login-screen">
+    <!-- Left panel -->
+    <div class="login-left">
+        <div class="login-left-inner">
+            <div class="login-logo">SIEM</div>
+            <div class="login-tagline">Log Correlation Engine — Detect, correlate, and respond to threats in real time.</div>
+
+            <div class="login-features">
+                <div class="login-feature">
+                    <span class="feat-num">01</span>
+                    <span>Real-time event correlation across 37 detection rules</span>
+                </div>
+                <div class="login-feature">
+                    <span class="feat-num">02</span>
+                    <span>Threat intelligence with 26+ active indicators</span>
+                </div>
+                <div class="login-feature">
+                    <span class="feat-num">03</span>
+                    <span>Statistical anomaly detection &amp; risk scoring</span>
+                </div>
+                <div class="login-feature">
+                    <span class="feat-num">04</span>
+                    <span>Multi-format parsing — Syslog, CEF, LEEF, JSON, Windows</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right panel / form -->
+    <div class="login-right">
+        <div class="login-form-box">
+            <div class="form-title">Sign In</div>
+            <div class="form-sub">Access the security operations console</div>
+
+            {% if error %}
+            <div style="border:1px solid #000;background:#fafafa;padding:0.625rem 0.875rem;border-radius:2px;font-size:0.75rem;margin-bottom:1.5rem;color:#000;">
+                ✗ {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="/login">
+                <div class="field-group">
+                    <label class="field-label">Username</label>
+                    <input type="text" name="username" class="input" required autofocus
+                           placeholder="Enter username" autocomplete="username">
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Password</label>
+                    <input type="password" name="password" class="input" required
+                           placeholder="Enter password" autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block mt-2">Sign In →</button>
+            </form>
+
+            <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--gray-200);">
+                <div style="font-size:0.625rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--gray-500);margin-bottom:0.5rem;">
+                    First-time setup
+                </div>
+                <div style="font-size:0.75rem;color:var(--gray-600);line-height:1.6;">
+                    Default credentials: <strong style="color:var(--black);">admin</strong> / <strong style="color:var(--black);">admin123</strong><br>
+                    You will be <strong style="color:var(--black);">required to change your password</strong> on first login.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

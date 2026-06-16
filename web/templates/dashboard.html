@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-row">
+        <div>
+            <h1>Dashboard</h1>
+            <div class="page-sub">Security operations overview — updated in real time</div>
+        </div>
+        <button class="btn btn-outline" onclick="refreshDashboard()">↻ Refresh</button>
+    </div>
+</div>
+
+<!-- KPI strip -->
+<div class="kpi-grid">
+    <div class="kpi-cell">
+        <div class="kpi-label">Total Events</div>
+        <div class="kpi-value" id="kpi-events">{{ stats.events_total }}</div>
+        <div class="kpi-delta" id="kpi-events-delta">{{ stats.pipeline_stats.events_processed }} processed</div>
+    </div>
+    <div class="kpi-cell dark">
+        <div class="kpi-label">Open Alerts</div>
+        <div class="kpi-value" id="kpi-alerts">{{ stats.open_alerts }}</div>
+        <div class="kpi-delta" id="kpi-alerts-delta">{{ stats.alerts_total if stats.alerts_total is defined else stats.events_total }} total generated</div>
+    </div>
+    <div class="kpi-cell">
+        <div class="kpi-label">Active Rules</div>
+        <div class="kpi-value" id="kpi-rules">{{ stats.active_rules }}</div>
+        <div class="kpi-delta">{{ stats.total_rules }} configured</div>
+    </div>
+    <div class="kpi-cell">
+        <div class="kpi-label">Threat Indicators</div>
+        <div class="kpi-value" id="kpi-ti">{{ stats.threat_indicators }}</div>
+        <div class="kpi-delta">IOC feeds active</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Severity breakdown -->
+    <div class="panel span-2">
+        <div class="panel-head">
+            <h2>Events by Severity</h2>
+            <span class="panel-meta">distribution</span>
+        </div>
+        <div class="panel-body">
+            <div class="bar-list">
+                {% for sev, count in stats.events_by_severity.items() %}
+                <div class="bar-row">
+                    <span class="bar-row-label">{{ sev }}</span>
+                    <div class="bar-row-track">
+                        <div class="bar-row-fill" style="width: {{ (count / (stats.events_total or 1) * 100)|round(1) }}%"></div>
+                    </div>
+                    <span class="bar-row-value">{{ count }}</span>
+                </div>
+                {% endfor %}
+                {% if not stats.events_by_severity %}
+                <div class="empty"><div class="empty-mark">—</div>No events ingested yet</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Event types -->
+    <div class="panel">
+        <div class="panel-head">
+            <h2>Events by Type</h2>
+            <span class="panel-meta">classification</span>
+        </div>
+        <div class="panel-body flush">
+            <div class="stat-list">
+                {% for etype, count in stats.events_by_type.items() %}
+                <div class="stat-list-item" style="padding:0.625rem 1.25rem;">
+                    <span class="sl-label">{{ etype }}</span>
+                    <span class="sl-value">{{ count }}</span>
+                </div>
+                {% endfor %}
+                {% if not stats.events_by_type %}
+                <div class="empty"><div class="empty-mark">—</div>No data</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Pipeline flow -->
+    <div class="panel">
+        <div class="panel-head">
+            <h2>Pipeline Throughput</h2>
+            <span class="panel-meta">processing</span>
+        </div>
+        <div class="panel-body">
+            <div class="pipe-flow">
+                <div class="pipe-node">
+                    <div class="pipe-node-label">Ingested</div>
+                    <div class="pipe-node-value">{{ stats.pipeline_stats.events_ingested }}</div>
+                </div>
+                <div class="pipe-node">
+                    <div class="pipe-node-label">Processed</div>
+                    <div class="pipe-node-value">{{ stats.pipeline_stats.events_processed }}</div>
+                </div>
+                <div class="pipe-node">
+                    <div class="pipe-node-label">Stored</div>
+                    <div class="pipe-node-value">{{ stats.pipeline_stats.events_stored }}</div>
+                </div>
+                <div class="pipe-node {{ 'error' if stats.pipeline_stats.errors }}">
+                    <div class="pipe-node-label">Errors</div>
+                    <div class="pipe-node-value">{{ stats.pipeline_stats.errors }}</div>
+                </div>
+            </div>
+            {% if stats.pipeline_stats.events_ingested > 0 %}
+            <div style="margin-top:1rem;font-size:0.6875rem;font-family:var(--font-mono);color:var(--gray-500);text-transform:uppercase;letter-spacing:var(--tracking-wide);">
+                Processing rate: {{ "%.1f"|format(stats.pipeline_stats.processing_rate) if stats.pipeline_stats.processing_rate else '0.0' }} ev/s
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent alerts -->
+    <div class="panel span-2">
+        <div class="panel-head">
+            <h2>Recent Alerts</h2>
+            <a href="{{ url_for('web_alerts') }}" class="panel-link">View All →</a>
+        </div>
+        <div class="panel-body flush">
+            <div id="recent-alerts">
+                <div class="empty"><div class="empty-mark">—</div>Loading alerts...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SEV_MAP = {critical:'tag-sev-critical',5:'tag-sev-critical',high:'tag-sev-high',4:'tag-sev-high',medium:'tag-sev-medium',3:'tag-sev-medium',low:'tag-sev-low',2:'tag-sev-low',info:'tag-sev-info',1:'tag-sev-info'};
+
+function sevTag(sev){
+    var key = String(sev).toLowerCase();
+    return SEV_MAP[key] || 'tag-sev-medium';
+}
+
+async function refreshDashboard() {
+    try {
+        var resp = await fetch('/api/dashboard');
+        var d = await resp.json();
+        document.getElementById('kpi-events').textContent = d.events_total;
+        document.getElementById('kpi-alerts').textContent = d.open_alerts;
+        document.getElementById('kpi-rules').textContent = d.active_rules;
+        document.getElementById('kpi-ti').textContent = d.threat_indicators;
+    } catch(e) { console.error(e); }
+    loadRecentAlerts();
+}
+
+async function loadRecentAlerts() {
+    try {
+        var resp = await fetch('/api/alerts?limit=6');
+        var d = await resp.json();
+        var c = document.getElementById('recent-alerts');
+        var alerts = d.alerts || [];
+        if (!alerts.length) { c.innerHTML = '<div class="empty"><div class="empty-mark">—</div>No alerts</div>'; return; }
+        c.innerHTML = alerts.map(function(a){
+            var sev = a.severity;
+            var sevStr = typeof sev === 'number' ? ['', 'info','low','medium','high','critical'][sev] || String(sev) : String(sev||'medium');
+            return '<div class="alert-item-card">'
+                + '<div class="alert-item-top">'
+                + '<span class="tag ' + sevTag(sev) + '">' + sevStr.toUpperCase() + '</span>'
+                + '<span class="alert-item-title">' + SIEM.escapeHtml(a.title||'Untitled') + '</span>'
+                + '<span class="alert-item-status">' + (a.status||'open') + '</span>'
+                + '</div>'
+                + '<div class="alert-item-desc">' + SIEM.escapeHtml((a.description||'').substring(0,140)) + '</div>'
+                + '<div class="alert-item-meta">'
+                + '<span>' + (a.rule_name||'—') + '</span>'
+                + '<span>risk ' + (a.risk_score||0).toFixed(0) + '</span>'
+                + '<span>' + (a.created_at||'').substring(0,16).replace('T',' ') + '</span>'
+                + '<span>' + (a.source_event_count||0) + ' events</span>'
+                + '</div></div>';
+        }).join('');
+    } catch(e) { console.error(e); }
+}
+
+setInterval(refreshDashboard, 30000);
+loadRecentAlerts();
+</script>
+{% endblock %}

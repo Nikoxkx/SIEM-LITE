@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SIEM-LITE{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</head>
+<body>
+    <!-- Mobile header -->
+    <div class="mobile-header">
+        <span class="brand-mark">SIEM-LITE</span>
+        <button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="logo-mark">S</div>
+            <div>
+                <div class="brand-name">SIEM-LITE</div>
+                <div class="brand-sub">Log Correlation</div>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="sidebar-section-label">Monitor</div>
+            <a href="{{ url_for('web_dashboard') }}" class="sidebar-link {% if request.endpoint == 'web_dashboard' %}active{% endif %}">
+                <span class="nav-icon">▣</span> Dashboard
+            </a>
+            <a href="{{ url_for('web_events') }}" class="sidebar-link {% if request.endpoint == 'web_events' %}active{% endif %}">
+                <span class="nav-icon">≡</span> Events
+            </a>
+            <a href="{{ url_for('web_alerts') }}" class="sidebar-link {% if request.endpoint == 'web_alerts' %}active{% endif %}">
+                <span class="nav-icon">!</span> Alerts
+            </a>
+
+            <div class="sidebar-section-label">Investigate</div>
+            <a href="{{ url_for('web_search') }}" class="sidebar-link {% if request.endpoint == 'web_search' %}active{% endif %}">
+                <span class="nav-icon">⌕</span> Search
+            </a>
+            <a href="{{ url_for('web_threat_intel') }}" class="sidebar-link {% if request.endpoint == 'web_threat_intel' %}active{% endif %}">
+                <span class="nav-icon">◈</span> Threat Intel
+            </a>
+            <a href="{{ url_for('web_guide') }}" class="sidebar-link {% if request.endpoint == 'web_guide' %}active{% endif %}">
+                <span class="nav-icon">?</span> Guide
+            </a>
+
+            <div class="sidebar-section-label">Configure</div>
+            <a href="{{ url_for('web_rules') }}" class="sidebar-link {% if request.endpoint == 'web_rules' %}active{% endif %}">
+                <span class="nav-icon">⚙</span> Rules
+            </a>
+            {% if username == 'admin' %}
+            <a href="{{ url_for('web_admin') }}" class="sidebar-link {% if request.endpoint == 'web_admin' %}active{% endif %}">
+                <span class="nav-icon">≣</span> Admin
+            </a>
+            {% endif %}
+            <a href="{{ url_for('web_account') }}" class="sidebar-link {% if request.endpoint == 'web_account' %}active{% endif %}">
+                <span class="nav-icon">⊙</span> Account
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar">{{ username[0] if username else 'U' }}</div>
+                <div>
+                    <div class="user-name">{{ username }}</div>
+                    <div class="user-role">{{ "Administrator" if username == 'admin' else "Analyst" }}</div>
+                </div>
+            </div>
+            <a href="{{ url_for('web_logout') }}" class="sidebar-link" style="padding-left:0;color:var(--gray-500);border:none;">
+                <span class="nav-icon">⏻</span> Sign Out
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main area -->
+    <div class="main-area">
+        {% if must_change %}
+        <div style="background:var(--black);color:var(--white);padding:0.625rem 2rem;font-size:0.75rem;letter-spacing:0.04em;">
+            ⚠ Your password must be changed for security. <a href="{{ url_for('web_account') }}" style="text-decoration:underline;color:var(--white);">Change it now →</a>
+        </div>
+        {% endif %}
+        <div class="topbar">
+            <div class="topbar-title">
+                SIEM-LITE <span class="sep">/</span> {% block section %}Console{% endblock %}
+            </div>
+            <div class="topbar-actions">
+                <div class="live-indicator">
+                    <span class="live-dot"></span> Live
+                </div>
+            </div>
+        </div>
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+
+        <footer class="app-footer">
+            <span>SIEM-LITE v2.4.1</span>
+            <span id="server-time"></span>
+        </footer>
+    </div>
+
+    <script>
+        function updateTime() {
+            var el = document.getElementById('server-time');
+            if (el) el.textContent = new Date().toISOString().substring(0,19) + ' UTC';
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Events — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-row">
+        <div>
+            <h1>Events</h1>
+            <div class="page-sub">Live event stream — click any row for full detail</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<div class="panel mb-2">
+    <div class="panel-body" style="padding:0.875rem 1.25rem;">
+        <div class="filter-bar">
+            <input type="text" id="event-filter" class="input" style="flex:1;min-width:200px;"
+                   placeholder="Filter by message, IP, or keyword..." oninput="SIEM.debounce(loadEvents, 300)()">
+            <select id="event-type-filter" class="select" onchange="loadEvents()">
+                <option value="">All Types</option>
+                <option value="authentication">Authentication</option>
+                <option value="network">Network</option>
+                <option value="firewall">Firewall</option>
+                <option value="web">Web</option>
+                <option value="system">System</option>
+                <option value="dns">DNS</option>
+                <option value="file">File</option>
+                <option value="process">Process</option>
+                <option value="av_malware">Malware</option>
+            </select>
+            <select id="event-sev-filter" class="select" onchange="loadEvents()">
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Events table -->
+<div class="panel">
+    <div class="panel-body flush">
+        <div class="data-table-wrap">
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Sev</th>
+                        <th>Type</th>
+                        <th>Source</th>
+                        <th>Destination</th>
+                        <th>Action</th>
+                        <th>Message</th>
+                        <th>Risk</th>
+                    </tr>
+                </thead>
+                <tbody id="events-body">
+                    <tr><td colspan="8"><div class="empty"><div class="empty-mark">—</div>Loading events...</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="pagination">
+        <button id="prev-page" class="btn btn-ghost btn-sm" onclick="changePage(-1)">← Prev</button>
+        <span id="page-info">Page 1</span>
+        <button id="next-page" class="btn btn-ghost btn-sm" onclick="changePage(1)">Next →</button>
+    </div>
+</div>
+
+<!-- Event detail modal -->
+<div class="modal-overlay" id="event-modal">
+    <div class="modal-box wide">
+        <div class="modal-head">
+            <h3>Event Detail</h3>
+            <button class="modal-close" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" id="event-detail-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SEV_MAP = {critical:'tag-sev-critical',5:'tag-sev-critical',high:'tag-sev-high',4:'tag-sev-high',medium:'tag-sev-medium',3:'tag-sev-medium',low:'tag-sev-low',2:'tag-sev-low',info:'tag-sev-info',1:'tag-sev-info',emergency:'tag-sev-critical',alert:'tag-sev-critical',error:'tag-sev-high',warning:'tag-sev-medium',notice:'tag-sev-low',debug:'tag-sev-info'};
+var currentPage = 0;
+var pageSize = 50;
+
+function sevTag(sev){ var k=String(sev).toLowerCase(); return SEV_MAP[k]||'tag-sev-medium'; }
+function sevLabel(sev){
+    var n = parseInt(sev);
+    if(!isNaN(n)) return ['','INFO','LOW','MEDIUM','HIGH','CRITICAL'][n]||String(sev);
+    return String(sev||'INFO').toUpperCase();
+}
+
+async function loadEvents() {
+    var filter = document.getElementById('event-filter').value;
+    var typeF = document.getElementById('event-type-filter').value;
+    var sevF = document.getElementById('event-sev-filter').value;
+    var q = [];
+    if(filter) q.push('message:"' + filter + '"');
+    if(typeF) q.push('event_type:' + typeF);
+    if(sevF) q.push('severity:' + sevF);
+
+    var url = '/api/events?q=' + encodeURIComponent(q.join(' ')) + '&limit=' + pageSize + '&offset=' + (currentPage*pageSize);
+    try {
+        var resp = await fetch(url);
+        var data = await resp.json();
+        renderEvents(data.events||[]);
+        document.getElementById('page-info').textContent = 'Page ' + (currentPage+1) + ' / ' + (data.total||0) + ' total';
+    } catch(e){ console.error(e); }
+}
+
+function renderEvents(events) {
+    var tbody = document.getElementById('events-body');
+    if(!events.length){ tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-mark">—</div>No events found</div></td></tr>'; return; }
+    tbody.innerHTML = events.map(function(e){
+        var risk = e.risk_score||0;
+        var riskPct = Math.min(100, risk);
+        return '<tr onclick="showEventDetail(\'' + e.event_id + '\')">'
+            + '<td class="td-time">' + (e.timestamp||'').substring(0,19).replace('T',' ') + '</td>'
+            + '<td><span class="tag ' + sevTag(e.severity) + '">' + sevLabel(e.severity) + '</span></td>'
+            + '<td class="td-mono">' + (e.event_type||'—') + '</td>'
+            + '<td class="td-mono">' + (e.source_ip||'—') + '</td>'
+            + '<td class="td-mono">' + (e.dest_ip||'—') + '</td>'
+            + '<td>' + (e.action||'—') + '</td>'
+            + '<td class="td-truncate">' + SIEM.escapeHtml((e.message||'').substring(0,80)) + '</td>'
+            + '<td><span class="risk-bar"><span class="risk-bar-track"><span class="risk-bar-fill" style="width:' + riskPct + '%"></span></span><span class="risk-pill">' + risk.toFixed(0) + '</span></span></td>'
+            + '</tr>';
+    }).join('');
+}
+
+async function showEventDetail(id) {
+    try {
+        var resp = await fetch('/api/events/' + id);
+        var e = await resp.json();
+        var fields = [
+            ['Event ID',e.event_id],['Timestamp',e.timestamp],['Type',e.event_type],['Severity',e.severity],
+            ['Source IP',e.source_ip],['Source Port',e.source_port],['Source Host',e.source_host],['Source User',e.source_user],
+            ['Source Country',e.source_country],['Dest IP',e.dest_ip],['Dest Port',e.dest_port],
+            ['Dest Host',e.dest_host],['Dest User',e.dest_user],['Dest Country',e.dest_country],
+            ['Protocol',e.protocol],['Action',e.action],['Result',e.result],['Status Code',e.status_code],
+            ['Product',e.product],['Vendor',e.vendor],['Category',e.category],['Risk Score',e.risk_score],
+            ['Rule ID',e.rule_id],['Source Log',e.source_log],['IOC Matched',e.ioc_matched],
+            ['Threat Tags',(e.threat_tags||[]).join(', ')],['MITRE',(e.mitre_attack||[]).join(', ')],['Tags',(e.tags||[]).join(', ')]
+        ];
+        var html = '<div class="detail-grid">';
+        fields.forEach(function(f){
+            if(f[1]!==null && f[1]!==undefined && f[1]!==''){
+                html += '<div class="detail-cell"><div class="detail-key">' + f[0] + '</div><div class="detail-val">' + SIEM.escapeHtml(f[1]) + '</div></div>';
+            }
+        });
+        html += '</div>';
+        if(e.message) html += '<div class="mt-2"><div class="field-label">Message</div><pre class="detail-pre">' + SIEM.escapeHtml(e.message) + '</pre></div>';
+        if(e.raw_data) html += '<div class="mt-2"><div class="field-label">Raw Data</div><pre class="detail-pre">' + SIEM.escapeHtml((e.raw_data||'').substring(0,1200)) + '</pre></div>';
+        document.getElementById('event-detail-body').innerHTML = html;
+        document.getElementById('event-modal').classList.add('open');
+    } catch(e){ console.error(e); }
+}
+
+function closeModal(){ document.getElementById('event-modal').classList.remove('open'); }
+function changePage(d){ currentPage = Math.max(0, currentPage+d); loadEvents(); }
+
+document.querySelector('.modal-overlay').addEventListener('click', function(e){ if(e.target===this) closeModal(); });
+loadEvents();
+</script>
+{% endblock %}

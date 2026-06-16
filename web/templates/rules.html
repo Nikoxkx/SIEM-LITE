@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Rules — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-row">
+        <div>
+            <h1>Rules</h1>
+            <div class="page-sub">Detection and correlation rule management</div>
+        </div>
+        <button class="btn btn-primary" onclick="openRuleModal()">+ New Rule</button>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-body flush">
+        <div class="data-table-wrap">
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Rule ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Fires</th>
+                        <th>Category</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="rules-body">
+                    <tr><td colspan="8"><div class="empty"><div class="empty-mark">—</div>Loading rules...</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create rule modal -->
+<div class="modal-overlay" id="rule-modal">
+    <div class="modal-box wide">
+        <div class="modal-head">
+            <h3 id="rule-modal-title">Create Rule</h3>
+            <button class="modal-close" onclick="closeRuleModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="field-row">
+                <div class="field-group">
+                    <label class="field-label">Rule Name</label>
+                    <input type="text" id="rule-name" class="input" placeholder="e.g., Failed SSH Login">
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Severity</label>
+                    <select id="rule-severity" class="select">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label class="field-label">Type</label>
+                    <select id="rule-type" class="select">
+                        <option value="detection" selected>Detection</option>
+                        <option value="correlation">Correlation</option>
+                        <option value="aggregation">Aggregation</option>
+                        <option value="threat_intel">Threat Intel</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Category</label>
+                    <input type="text" id="rule-category" class="input" value="security">
+                </div>
+            </div>
+            <div class="field-group">
+                <label class="field-label">Description</label>
+                <textarea id="rule-description" class="textarea" rows="2"></textarea>
+            </div>
+            <div class="field-group">
+                <label class="field-label">Conditions (JSON array of condition groups)</label>
+                <textarea id="rule-conditions" class="textarea" rows="6" style="font-family:var(--font-mono);font-size:0.75rem;" placeholder='[[{"field": "action", "operator": "eq", "value": "logon_failed"}]]'></textarea>
+            </div>
+            <div class="field-row">
+                <div class="field-group">
+                    <label class="field-label">Window (sec, correlation only)</label>
+                    <input type="number" id="rule-window" class="input" value="300">
+                </div>
+                <div class="field-group">
+                    <label class="field-label">Threshold (correlation only)</label>
+                    <input type="number" id="rule-threshold" class="input" value="1">
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="saveRule()">Create Rule</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SEV_MAP = {critical:'tag-sev-critical',high:'tag-sev-high',medium:'tag-sev-medium',low:'tag-sev-low',info:'tag-sev-info'};
+
+async function loadRules() {
+    try {
+        var resp = await fetch('/api/rules');
+        var data = await resp.json();
+        var tbody = document.getElementById('rules-body');
+        var rules = data.rules || [];
+        if(!rules.length){ tbody.innerHTML = '<tr><td colspan="8"><div class="empty"><div class="empty-mark">—</div>No rules configured</div></td></tr>'; return; }
+        tbody.innerHTML = rules.map(function(r){
+            return '<tr>'
+                + '<td class="td-mono">' + (r.rule_id||'—') + '</td>'
+                + '<td>' + SIEM.escapeHtml(r.name||'—') + '</td>'
+                + '<td><span class="tag tag-muted">' + (r.rule_type||'—') + '</span></td>'
+                + '<td><span class="tag ' + (SEV_MAP[r.severity]||'tag-sev-medium') + '">' + (r.severity||'medium').toUpperCase() + '</span></td>'
+                + '<td>' + (r.enabled ? '<span class="tag tag-solid">ACTIVE</span>' : '<span class="tag tag-muted">DISABLED</span>') + '</td>'
+                + '<td class="td-mono">' + (r.fire_count||0) + '</td>'
+                + '<td>' + (r.category||'—') + '</td>'
+                + '<td>'
+                + '<button class="btn ' + (r.enabled?'btn-ghost':'btn-outline') + ' btn-sm" onclick="toggleRule(\'' + r.rule_id + '\',' + !r.enabled + ')">' + (r.enabled?'Disable':'Enable') + '</button> '
+                + '<button class="btn btn-ghost btn-sm" onclick="deleteRule(\'' + r.rule_id + '\')">Delete</button>'
+                + '</td></tr>';
+        }).join('');
+    } catch(e){ console.error(e); }
+}
+
+function openRuleModal(){ document.getElementById('rule-modal').classList.add('open'); }
+function closeRuleModal(){ document.getElementById('rule-modal').classList.remove('open'); }
+
+async function saveRule() {
+    var cond;
+    try { cond = JSON.parse(document.getElementById('rule-conditions').value || '[]'); }
+    catch(e){ SIEM.notify('Invalid JSON in conditions','error'); return; }
+
+    var rule = {
+        name: document.getElementById('rule-name').value,
+        description: document.getElementById('rule-description').value,
+        severity: document.getElementById('rule-severity').value,
+        rule_type: document.getElementById('rule-type').value,
+        category: document.getElementById('rule-category').value,
+        conditions: cond, logic: 'or', actions: ['alert'],
+        window: parseInt(document.getElementById('rule-window').value),
+        threshold: parseInt(document.getElementById('rule-threshold').value)
+    };
+    try {
+        var resp = await fetch('/api/rules', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rule)});
+        if(resp.ok){ closeRuleModal(); SIEM.notify('Rule created','success'); loadRules(); }
+        else { var err = await resp.json(); SIEM.notify(err.error||'Failed','error'); }
+    } catch(e){ SIEM.notify(e.message,'error'); }
+}
+
+async function toggleRule(id, enable) {
+    await fetch('/api/rules/' + id + '/' + (enable?'enable':'disable'), {method:'POST'});
+    loadRules();
+}
+
+async function deleteRule(id) {
+    if(!confirm('Delete this rule?')) return;
+    await fetch('/api/rules/' + id, {method:'DELETE'});
+    SIEM.notify('Rule deleted','info');
+    loadRules();
+}
+
+document.querySelector('#rule-modal').addEventListener('click', function(e){ if(e.target===this) closeRuleModal(); });
+loadRules();
+</script>
+{% endblock %}

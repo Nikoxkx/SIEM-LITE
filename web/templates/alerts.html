@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Alerts — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-row">
+        <div>
+            <h1>Alerts</h1>
+            <div class="page-sub">Triage and respond to security alerts</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter bar -->
+<div class="panel mb-2">
+    <div class="panel-body" style="padding:0.875rem 1.25rem;">
+        <div class="filter-bar">
+            <select id="alert-status-filter" class="select" onchange="loadAlerts()">
+                <option value="open" selected>Open</option>
+                <option value="">All Status</option>
+                <option value="ack">Acknowledged</option>
+                <option value="investigating">Investigating</option>
+                <option value="escalated">Escalated</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+            </select>
+            <select id="alert-sev-filter" class="select" onchange="loadAlerts()">
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="info">Info</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Alerts list -->
+<div class="panel">
+    <div class="panel-body flush">
+        <div id="alerts-list">
+            <div class="empty"><div class="empty-mark">—</div>Loading alerts...</div>
+        </div>
+    </div>
+    <div class="pagination">
+        <button id="alert-prev" class="btn btn-ghost btn-sm" onclick="changeAlertPage(-1)">← Prev</button>
+        <span id="alert-page-info">Page 1</span>
+        <button id="alert-next" class="btn btn-ghost btn-sm" onclick="changeAlertPage(1)">Next →</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SEV_MAP = {critical:'tag-sev-critical',5:'tag-sev-critical',high:'tag-sev-high',4:'tag-sev-high',medium:'tag-sev-medium',3:'tag-sev-medium',low:'tag-sev-low',2:'tag-sev-low',info:'tag-sev-info',1:'tag-sev-info'};
+var alertPage = 0;
+
+function sevTag(sev){ var k=String(sev).toLowerCase(); return SEV_MAP[k]||'tag-sev-medium'; }
+function sevLabel(sev){
+    var n=parseInt(sev);
+    if(!isNaN(n)) return ['','INFO','LOW','MEDIUM','HIGH','CRITICAL'][n]||String(sev);
+    return String(sev||'MEDIUM').toUpperCase();
+}
+
+async function loadAlerts() {
+    var status = document.getElementById('alert-status-filter').value;
+    var sev = document.getElementById('alert-sev-filter').value;
+    var url = '/api/alerts?limit=20&offset=' + (alertPage*20);
+    if(status) url += '&status=' + status;
+    if(sev) url += '&severity=' + sev;
+    try {
+        var resp = await fetch(url);
+        var data = await resp.json();
+        renderAlerts(data.alerts||[]);
+        document.getElementById('alert-page-info').textContent = 'Page ' + (alertPage+1) + ' / ' + (data.total||0) + ' total';
+    } catch(e){ console.error(e); }
+}
+
+function renderAlerts(alerts) {
+    var c = document.getElementById('alerts-list');
+    if(!alerts.length){ c.innerHTML = '<div class="empty"><div class="empty-mark">—</div>No alerts found</div>'; return; }
+    c.innerHTML = alerts.map(function(a){
+        var sevStr = sevLabel(a.severity);
+        return '<div class="alert-item-card">'
+            + '<div class="alert-item-top">'
+            + '<span class="tag ' + sevTag(a.severity) + '">' + sevStr + '</span>'
+            + '<span class="alert-item-title">' + SIEM.escapeHtml(a.title||'Untitled Alert') + '</span>'
+            + '<span class="alert-item-status">' + (a.status||'open') + '</span>'
+            + '</div>'
+            + '<div class="alert-item-desc">' + SIEM.escapeHtml((a.description||'').substring(0,180)) + '</div>'
+            + '<div class="alert-item-meta">'
+            + '<span>' + SIEM.escapeHtml(a.rule_name||'—') + '</span>'
+            + '<span>risk ' + (a.risk_score||0).toFixed(0) + '</span>'
+            + '<span>' + (a.created_at||'').substring(0,16).replace('T',' ') + '</span>'
+            + '<span>' + (a.source_event_count||0) + ' events</span>'
+            + '</div>'
+            + '<div class="alert-item-actions">'
+            + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();ackAlert(\'' + a.alert_id + '\')">Acknowledge</button>'
+            + '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();resolveAlert(\'' + a.alert_id + '\')">Resolve</button>'
+            + '</div></div>';
+    }).join('');
+}
+
+async function ackAlert(id) {
+    try {
+        await fetch('/api/alerts/' + id + '/ack', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'{{ username }}',reason:'Acknowledged via UI'})});
+        SIEM.notify('Alert acknowledged','info');
+        loadAlerts();
+    } catch(e){ console.error(e); }
+}
+
+async function resolveAlert(id) {
+    try {
+        await fetch('/api/alerts/' + id + '/resolve', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:'{{ username }}',resolution:'Resolved via UI'})});
+        SIEM.notify('Alert resolved','success');
+        loadAlerts();
+    } catch(e){ console.error(e); }
+}
+
+function changeAlertPage(d){ alertPage = Math.max(0, alertPage+d); loadAlerts(); }
+
+loadAlerts();
+setInterval(loadAlerts, 30000);
+</script>
+{% endblock %}

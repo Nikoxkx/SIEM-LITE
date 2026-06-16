@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Search — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1>Search</h1>
+    <div class="page-sub">Query the event store with field-level syntax</div>
+</div>
+
+<div class="panel mb-2">
+    <div class="panel-body">
+        <div class="search-bar">
+            <input type="text" id="search-query" class="input" placeholder="source_ip:192.168.1.1 severity:high &quot;failed password&quot;"
+                   onkeypress="if(event.key==='Enter')executeSearch()">
+            <button class="btn btn-primary" onclick="executeSearch()">Search</button>
+        </div>
+        <div style="margin-top:0.75rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;">
+            <div style="font-size:0.625rem;color:var(--gray-400);letter-spacing:var(--tracking-wide);">
+                SYNTAX: <code style="font-family:var(--font-mono);">field:value</code> ·
+                <code style="font-family:var(--font-mono);">field:a,b</code> ·
+                <code style="font-family:var(--font-mono);">-field:value</code> ·
+                <code style="font-family:var(--font-mono);">field:/regex/</code> ·
+                <code style="font-family:var(--font-mono);">&quot;text&quot;</code>
+            </div>
+            <div class="flex gap-2">
+                <select id="search-timerange" class="select" style="width:auto;font-size:0.75rem;">
+                    <option value="15m">15 min</option>
+                    <option value="1h" selected>1 hour</option>
+                    <option value="6h">6 hours</option>
+                    <option value="24h">24 hours</option>
+                    <option value="7d">7 days</option>
+                    <option value="30d">30 days</option>
+                </select>
+                <select id="search-limit" class="select" style="width:auto;font-size:0.75rem;">
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h2>Results</h2>
+        <span class="panel-meta" id="result-meta"></span>
+    </div>
+    <div class="panel-body" id="search-output">
+        <div class="empty"><div class="empty-mark">—</div>Enter a query and press Search</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function executeSearch() {
+    var q = document.getElementById('search-query').value.trim();
+    if(!q){ document.getElementById('search-output').innerHTML = '<div class="empty"><div class="empty-mark">—</div>Please enter a search query</div>'; return; }
+
+    var timeRange = document.getElementById('search-timerange').value;
+    var limit = document.getElementById('search-limit').value;
+    var fullQ = q + ' -' + timeRange;
+    var url = '/api/events?q=' + encodeURIComponent(fullQ) + '&limit=' + limit;
+
+    try {
+        var resp = await fetch(url);
+        var data = await resp.json();
+        renderResults(data);
+    } catch(e){
+        document.getElementById('search-output').innerHTML = '<div class="empty"><div class="empty-mark">—</div>Search error: ' + e.message + '</div>';
+    }
+}
+
+function renderResults(data) {
+    var out = document.getElementById('search-output');
+    var events = data.events||[];
+    var total = data.total||0;
+    document.getElementById('result-meta').textContent = total + ' results · ' + ((data.query_time||0)).toFixed(3) + 's';
+
+    if(!events.length){ out.innerHTML = '<div class="empty"><div class="empty-mark">—</div>No results found</div>'; return; }
+
+    out.innerHTML = events.map(function(e){
+        return '<div class="result-item">'
+            + '<div class="result-head">'
+            + '<span class="tag tag-sev-' + String(e.severity||'info').toLowerCase() + '">' + String(e.severity||'info').toUpperCase() + '</span>'
+            + '<span class="td-time">' + (e.timestamp||'').substring(0,19).replace('T',' ') + '</span>'
+            + '<span class="tag tag-muted">' + (e.event_type||'') + '</span>'
+            + '</div>'
+            + '<div class="result-msg">' + SIEM.escapeHtml(e.message||'') + '</div>'
+            + '<div class="result-meta">'
+            + (e.source_ip ? '<span>src ' + e.source_ip + '</span>' : '')
+            + (e.dest_ip ? '<span>dst ' + e.dest_ip + '</span>' : '')
+            + (e.source_user ? '<span>user ' + e.source_user + '</span>' : '')
+            + (e.action ? '<span>act ' + e.action + '</span>' : '')
+            + (e.risk_score ? '<span>risk ' + e.risk_score.toFixed(0) + '</span>' : '')
+            + '</div></div>';
+    }).join('');
+}
+</script>
+{% endblock %}

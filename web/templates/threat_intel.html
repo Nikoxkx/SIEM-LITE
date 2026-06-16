@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Threat Intel — SIEM-LITE{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="page-head-row">
+        <div>
+            <h1>Threat Intelligence</h1>
+            <div class="page-sub">Indicators of compromise and reputation data</div>
+        </div>
+        <button class="btn btn-primary" onclick="openIndicatorModal()">+ Add Indicator</button>
+    </div>
+</div>
+
+<!-- KPI strip -->
+<div class="kpi-grid">
+    <div class="kpi-cell">
+        <div class="kpi-label">IP Addresses</div>
+        <div class="kpi-value" id="ti-ip-count">—</div>
+    </div>
+    <div class="kpi-cell">
+        <div class="kpi-label">Domains</div>
+        <div class="kpi-value" id="ti-domain-count">—</div>
+    </div>
+    <div class="kpi-cell">
+        <div class="kpi-label">Hashes</div>
+        <div class="kpi-value" id="ti-hash-count">—</div>
+    </div>
+    <div class="kpi-cell dark">
+        <div class="kpi-label">Total Matches</div>
+        <div class="kpi-value" id="ti-matches">—</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h2>Search Indicators</h2>
+    </div>
+    <div class="panel-body">
+        <div class="search-bar">
+            <input type="text" id="ti-search" class="input" placeholder="Search IP, domain, hash, URL..."
+                   onkeypress="if(event.key==='Enter')searchIndicators()">
+            <button class="btn btn-primary" onclick="searchIndicators()">Search</button>
+        </div>
+        <div id="ti-results" class="mt-2">
+            <div class="empty"><div class="empty-mark">—</div>Search for threat intelligence indicators</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add indicator modal -->
+<div class="modal-overlay" id="indicator-modal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3>Add Threat Indicator</h3>
+            <button class="modal-close" onclick="closeIndicatorModal()">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="field-group">
+                <label class="field-label">Type</label>
+                <select id="ind-type" class="select">
+                    <option value="ip">IP Address</option>
+                    <option value="domain">Domain</option>
+                    <option value="url">URL</option>
+                    <option value="hash">File Hash</option>
+                    <option value="email">Email</option>
+                    <option value="cidr">CIDR Range</option>
+                </select>
+            </div>
+            <div class="field-group">
+                <label class="field-label">Value</label>
+                <input type="text" id="ind-value" class="input" placeholder="e.g., 192.168.1.1">
+            </div>
+            <div class="field-group">
+                <label class="field-label">Severity</label>
+                <select id="ind-severity" class="select">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                </select>
+            </div>
+            <div class="field-group">
+                <label class="field-label">Description</label>
+                <textarea id="ind-description" class="textarea" rows="2"></textarea>
+            </div>
+            <div class="field-group">
+                <label class="field-label">Tags (comma-separated)</label>
+                <input type="text" id="ind-tags" class="input" placeholder="malware, c2, botnet">
+            </div>
+            <button class="btn btn-primary" onclick="addIndicator()">Add Indicator</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadTIStats() {
+    try {
+        var resp = await fetch('/api/threat-intel/indicators');
+        var data = await resp.json();
+        var bt = data.by_type||{};
+        document.getElementById('ti-ip-count').textContent = bt.ip||0;
+        document.getElementById('ti-domain-count').textContent = bt.domain||0;
+        document.getElementById('ti-hash-count').textContent = bt.hash||0;
+        document.getElementById('ti-matches').textContent = (data.stats&&data.stats.match_count)||0;
+    } catch(e){ console.error(e); }
+}
+
+async function searchIndicators() {
+    var q = document.getElementById('ti-search').value.trim();
+    if(!q) return;
+    try {
+        var resp = await fetch('/api/threat-intel/search?q=' + encodeURIComponent(q));
+        var data = await resp.json();
+        var c = document.getElementById('ti-results');
+        var results = data.results||[];
+        if(!results.length){ c.innerHTML = '<div class="empty"><div class="empty-mark">—</div>No matching indicators</div>'; return; }
+        c.innerHTML = results.map(function(i){
+            return '<div class="indicator-row">'
+                + '<span class="tag tag-sev-' + (i.severity||'medium') + '">' + (i.severity||'medium').toUpperCase() + '</span>'
+                + '<span class="ind-type">' + i.type + '</span>'
+                + '<code class="ind-value">' + SIEM.escapeHtml(i.value) + '</code>'
+                + '<span class="ind-desc">' + SIEM.escapeHtml(i.description||'') + '</span>'
+                + '</div>';
+        }).join('');
+    } catch(e){ console.error(e); }
+}
+
+function openIndicatorModal(){ document.getElementById('indicator-modal').classList.add('open'); }
+function closeIndicatorModal(){ document.getElementById('indicator-modal').classList.remove('open'); }
+
+async function addIndicator() {
+    var tags = document.getElementById('ind-tags').value.split(',').map(function(t){return t.trim();}).filter(Boolean);
+    var body = {
+        type: document.getElementById('ind-type').value,
+        value: document.getElementById('ind-value').value,
+        severity: document.getElementById('ind-severity').value,
+        description: document.getElementById('ind-description').value,
+        source: 'ui', tags: tags
+    };
+    try {
+        var resp = await fetch('/api/threat-intel/indicators', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if(resp.ok){ closeIndicatorModal(); SIEM.notify('Indicator added','success'); loadTIStats(); document.getElementById('ind-value').value=''; }
+    } catch(e){ SIEM.notify(e.message,'error'); }
+}
+
+document.querySelector('#indicator-modal').addEventListener('click', function(e){ if(e.target===this) closeIndicatorModal(); });
+loadTIStats();
+</script>
+{% endblock %}

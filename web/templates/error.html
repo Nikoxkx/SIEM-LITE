@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error {{ code }} — SIEM-LITE</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--black);">
+    <div style="text-align:center;color:var(--white);">
+        <div style="font-family:var(--font-mono);font-size:6rem;font-weight:800;letter-spacing:-0.04em;line-height:1;">{{ code }}</div>
+        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:var(--tracking-widest);color:var(--gray-500);margin-top:0.5rem;margin-bottom:2rem;">Error</div>
+        <div style="font-size:1rem;color:var(--gray-400);margin-bottom:2.5rem;">{{ message }}</div>
+        <a href="/" class="btn btn-outline" style="border-color:var(--white);color:var(--white);">← Back to Dashboard</a>
+    </div>
+</div>
+</body>
+</html>
